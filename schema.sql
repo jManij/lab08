@@ -1,7 +1,8 @@
 
-DROP TABLE IF EXISTS weather;
-DROP TABLE IF EXISTS locations;
+DROP TABLE locations CASCADE;
 DROP TABLE IF EXISTS events;
+DROP TABLE IF EXISTS weather;
+
 
 CREATE TABLE locations(
   id SERIAL PRIMARY KEY,
@@ -15,7 +16,7 @@ CREATE TABLE weather (
   id SERIAL PRIMARY KEY,
   forecast VARCHAR(255),
   time VARCHAR(255),
-  location_id INTEGER,
+  location_id INTEGER NOT NULL,
   FOREIGN KEY (location_id) REFERENCES locations (id)
 );
 
@@ -24,7 +25,8 @@ CREATE TABLE events (
   name VARCHAR(255),
   link VARCHAR(255),
   event_date VARCHAR(255),
-  summary TEXT
+  summary TEXT,
+  location_id INTEGER NOT NULL,
+  FOREIGN KEY (location_id) REFERENCES locations (id)
 );
 
-  -- location_id INTEGER NOT NULL,

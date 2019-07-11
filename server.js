@@ -83,21 +83,13 @@ function searchWeather(request, response) {
 }
 
 function searchEvents(request, response) {
+  let locationName = request.query.data.search_query;
   let lat = request.query.data.latitude;
   let long = request.query.data.longitude;
-  const url = `https://www.eventbriteapi.com/v3/events/search/?token=${process.env.EVENTBRITE_API_KEY}&location.latitude=${lat}&location.longitude=${long}`
-  superagent.get(url)
-    .then(result => {
-      let arrayOfFormattedEvents = result.body.events.map(item => {
-        return new FormattedEvent(item);
-      })
+  const url = `https://www.eventbriteapi.com/v3/events/search/?token=${process.env.EVENTBRITE_API_KEY}&location.latitude=${lat}&location.longitude=${long}`;
 
-      response.send(arrayOfFormattedEvents);
-
-    }).catch(e => {
-      console.log(e);
-      response.status(500).send('Status 500');
-    })
+  console.log('Coming from searchevent: ', locationName);
+  getEvents(locationName, response, url);
 }
 
 /******************---ROUTES--------**************************/
@@ -130,7 +122,7 @@ function addWeatherSendResponse(location_id, response, url) {
           })
 
       } else {
-        getWeatherFromDB(location_id, response);
+        sendWeatherFromDB(location_id, response);
       }
     }).catch(e => {
       console.error(e);
@@ -138,12 +130,71 @@ function addWeatherSendResponse(location_id, response, url) {
 
 }
 
-function getWeatherFromDB(locationId, response) {
+function getEvents(locationName, response, url) {
+  let location_id;
+  client.query(`SELECT id FROM locations WHERE search_query=$1`, [locationName])
+    .then(sqlResult => {
+      location_id = sqlResult.rows[0].id; //Gets the recent ID that has been added
+      console.log('location ID: ', location_id)
+      addEventsSendResponse(location_id, response, url); //Add weather and send response
+    }).catch(e => {
+      console.log(e);
+      response.status(500).send('STATUS 500');
+    })
+}
+
+function addEventsSendResponse(location_id, response, url) {
+
+  client.query(`SELECT * FROM events WHERE location_id=$1`, [location_id])
+    .then(sqlResult => {
+      if (sqlResult.rowCount === 0) {
+        superagent.get(url)
+          .then(result => {
+            let arrayOfFormattedEvents = result.body.events.map(item => {
+              return new FormattedEvent(item);
+            })
+            client.query(
+              `INSERT INTO events (
+              name,
+              link,
+              event_date,
+              summary,
+              location_id) VALUES($1, $2, $3, $4, $5)`, [arrayOfFormattedEvents.name, arrayOfFormattedEvents.link, arrayOfFormattedEvents.event_date, arrayOfFormattedEvents.summary, location_id])
+
+            //send response to the client
+            response.send(arrayOfFormattedEvents);
+          }).catch(e => {
+            console.error(e);
+            response.status(500).send('STATUS 500');
+          })
+
+      } else {
+        // getWeatherFromDB(location_id, response);
+        console.log('Get data from event DB instead of API call');
+        sendEventsFromDB(location_id, response);  //Send events from DB
+      }
+    }).catch(e => {
+      console.error(e);
+    })
+
+}
+
+function sendWeatherFromDB(locationId, response) {
   console.log('Sending weather from DB');
   client.query(`SELECT * FROM weather WHERE location_id=$1`, [locationId])
     .then(sqlResult => {
       response.send(sqlResult.rows[0]);
     })
+}
+
+function sendEventsFromDB(location_id, response) {
+  console.log('Sending events from DB');
+  client.query(`SELECT * FROM events WHERE location_id=$1`, [location_id])
+    .then(sqlResult => {
+      console.log(sqlResult);
+      // response.send(sqlResult);
+    })
+
 }
 
 function getLocation(locationName, response, url) {
