@@ -73,6 +73,7 @@ function searchToLatLng(request, response) {
             let location = new FormattedLocation(locationName, result.body)
 
             // Save the data to postgres
+            //Working
             // client.query takes two arguments: a sql command, and an array ov values
             client.query(
               `INSERT INTO locations (
