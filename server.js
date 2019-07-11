@@ -10,7 +10,6 @@ const pg = require('pg');
 
 //Global vars
 const PORT = process.env.PORT || 3001;
-let location_id;
 
 const client = new pg.Client(process.env.DATABASE_URL);
 client.connect();
@@ -86,7 +85,7 @@ function searchToLatLng(request, response) {
             )
             response.send(location);
 
-            console.log(location_id,'new one')
+            console.log(location_id, 'new one')
 
           }).catch(e => {
             console.error(e);
@@ -103,63 +102,20 @@ function searchToLatLng(request, response) {
 
 function searchWeather(request, response) {
   // console.log(request.query.data.latitude)
-  let location = request.query.data.search_query;
+  let locationName = request.query.data.search_query;
+  let location_id;
   let lat = request.query.data.latitude;
   let long = request.query.data.longitude;
   let weatherLocation = `${lat},${long}` || '37.8267,-122.4233';
   const url = `https://api.darksky.net/forecast/${process.env.WEATHER_API_KEY}/${weatherLocation}`;
 
-  //Get the location ID
-  // console.log('loca: ', location_id);
-  client.query(`SELECT * FROM weather WHERE location_id=$1`, [location_id])
+  client.query(`SELECT id FROM locations WHERE search_query=$1`, [locationName])
     .then(sqlResult => {
-      // if (sqlResult.rowCount === 0)
-      {
-        superagent.get(url)
-          .then(result => {
-            let forecastArr = result.body.daily.data.map(el => {
-              return new FormattedDailyWeather(el);
-            })
-
-            console.log('weather log id: ', location_id);
-
-            client.query(
-              `INSERT INTO weather (
-                forecast,
-                time,
-                location_id) VALUES($1, $2, $3)`, [forecastArr[0].forecast, forecastArr[0].time, location_id])
-
-            //send response to the client
-            response.send(forecastArr);
-          }).catch(e => {
-            console.error(e);
-            response.status(500).send('STATUS 500');
-          })
-
-      }// if ends
-      // else {
-      //   console.log('data exists, query here now:');
-      //   getWeather(location_id, response);
-
-      // }
-    }).catch(e => {
-      console.error(e);
-
+      location_id = sqlResult.rows[0].id; //Gets the recent ID that has been added
+      console.log('location ID: ', location_id)
+      addWeatherSendResponse(location_id, response, url);
     })
 
-
-
-  // superagent.get(url)
-  //   .then(result => {
-  //     // console.log(result.body.daily.data);
-  //     let forecastArr = result.body.daily.data.map(el => {
-  //       return new FormattedDailyWeather(el);
-  //     })
-  //     response.send(forecastArr);
-  //   }).catch(e => {
-  //     console.error(e);
-  //     response.status(500).send('Status 500')
-  //   })
 }
 
 function searchEvents(request, response) {
@@ -180,12 +136,48 @@ function searchEvents(request, response) {
     })
 }
 
-function getWeather(locationId, response) {
-  console.log(locationId);
 
+
+function addWeatherSendResponse(location_id, response, url) {
+
+  client.query(`SELECT * FROM weather WHERE location_id=$1`, [location_id])
+    .then(sqlResult => {
+      if (sqlResult.rowCount === 0) {
+        superagent.get(url)
+          .then(result => {
+            let forecastArr = result.body.daily.data.map(el => {
+              return new FormattedDailyWeather(el);
+            })
+            console.log('weather log id: ', location_id);
+            client.query(
+              `INSERT INTO weather (
+                forecast,
+                time,
+                location_id) VALUES($1, $2, $3)`, [forecastArr[0].forecast, forecastArr[0].time, location_id])
+
+            //send response to the client
+            response.send(forecastArr);
+          }).catch(e => {
+            console.error(e);
+            response.status(500).send('STATUS 500');
+          })
+
+      } else {
+        console.log('data exists, query here now:');
+        getWeather(location_id, response);
+
+      }
+    }).catch(e => {
+      console.error(e);
+
+    })
+
+}
+
+function getWeather(locationId, response) {
+  console.log('Sending weather from DB');
   client.query(`SELECT * FROM weather WHERE location_id=$1`, [locationId])
     .then(sqlResult => {
-      // console.log(sqlResult).rows[0];
       response.send(sqlResult.rows[0]);
     })
 
