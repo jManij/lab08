@@ -15,7 +15,7 @@ CREATE TABLE weather (
   id SERIAL PRIMARY KEY,
   forecast VARCHAR(255),
   time VARCHAR(255),
-  location_id INTEGER NOT NULL,
+  location_id INTEGER,
   FOREIGN KEY (location_id) REFERENCES locations (id)
 );
 
@@ -26,3 +26,5 @@ CREATE TABLE events (
   event_date VARCHAR(255),
   summary TEXT
 );
+
+  -- location_id INTEGER NOT NULL,

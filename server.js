@@ -10,10 +10,11 @@ const pg = require('pg');
 
 //Global vars
 const PORT = process.env.PORT || 3001;
+let location_id;
 
 const client = new pg.Client(process.env.DATABASE_URL);
 client.connect();
-client.on('error', error=> {
+client.on('error', error => {
   console.error(error);
 })
 
@@ -23,7 +24,7 @@ app.use(cors());
 
 
 //Routes
-app.get('/location', searchLatLong);
+app.get('/location', searchToLatLng);
 
 app.get('/weather', searchWeather);
 
@@ -55,27 +56,8 @@ function FormattedEvent(data) {
   this.summary = data.description.text;
 }
 
-function searchLatLong(request, response) {
-  let locationName = request.query.data || 'seattle';
-  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${locationName}&key=${process.env.GEOCODE_API_KEY}`;
-
-
-
-  superagent.get(url)
-    .then(result => {
-      // console.log(result.body);
-      // let location = new FormattedLocation(locationName, result.body);
-      // response.send(location);
-      
-    }).catch(e => {
-      console.error(e);
-      response.status(500).send('Status 500')
-    })
-}
-
 function searchToLatLng(request, response) {
-
-  const locationName = request.query.data;
+  let locationName = request.query.data || 'seattle';
   const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${locationName}&key=${process.env.GEOCODE_API_KEY}`;
 
   // if is in database
@@ -83,12 +65,12 @@ function searchToLatLng(request, response) {
   client.query(`SELECT * FROM locations WHERE search_query=$1`, [locationName])
     .then(sqlResult => {
 
-      if(sqlResult.rowCount === 0){
+      if (sqlResult.rowCount === 0) {
         console.log('getting new data from googles');
         superagent.get(url)
           .then(result => {
 
-            let location = new Location(locationName, result)
+            let location = new FormattedLocation(locationName, result.body)
 
             // Save the data to postgres
             // client.query takes two arguments: a sql command, and an array ov values
@@ -101,8 +83,9 @@ function searchToLatLng(request, response) {
         ) VALUES ($1, $2, $3, $4)`,
               [location.search_query, location.formatted_query, location.latitude, location.longitude]
             )
-
             response.send(location);
+
+            console.log(location_id,'new one')
 
           }).catch(e => {
             console.error(e);
@@ -115,31 +98,67 @@ function searchToLatLng(request, response) {
       }
     });
 
-  // else do everything normal
-
-
 }
-
-
-
 
 function searchWeather(request, response) {
   // console.log(request.query.data.latitude)
+  let location = request.query.data.search_query;
   let lat = request.query.data.latitude;
   let long = request.query.data.longitude;
   let weatherLocation = `${lat},${long}` || '37.8267,-122.4233';
-  const url = `https://api.darksky.net/forecast/${process.env.WEATHER_API_KEY}/${weatherLocation}`
-  superagent.get(url)
-    .then(result => {
-      // console.log(result.body.daily.data);
-      let forecastArr = result.body.daily.data.map(el => {
-        return new FormattedDailyWeather(el);
-      })
-      response.send(forecastArr);
+  const url = `https://api.darksky.net/forecast/${process.env.WEATHER_API_KEY}/${weatherLocation}`;
+
+  //Get the location ID
+  // console.log('loca: ', location_id);
+  client.query(`SELECT * FROM weather WHERE location_id=$1`, [location_id])
+    .then(sqlResult => {
+      // if (sqlResult.rowCount === 0)
+      {
+        superagent.get(url)
+          .then(result => {
+            let forecastArr = result.body.daily.data.map(el => {
+              return new FormattedDailyWeather(el);
+            })
+
+            console.log('weather log id: ', location_id);
+
+            client.query(
+              `INSERT INTO weather (
+                forecast,
+                time,
+                location_id) VALUES($1, $2, $3)`, [forecastArr[0].forecast, forecastArr[0].time, location_id])
+
+            //send response to the client
+            response.send(forecastArr);
+          }).catch(e => {
+            console.error(e);
+            response.status(500).send('STATUS 500');
+          })
+
+      }// if ends
+      // else {
+      //   console.log('data exists, query here now:');
+      //   getWeather(location_id, response);
+
+      // }
     }).catch(e => {
       console.error(e);
-      response.status(500).send('Status 500')
+
     })
+
+
+
+  // superagent.get(url)
+  //   .then(result => {
+  //     // console.log(result.body.daily.data);
+  //     let forecastArr = result.body.daily.data.map(el => {
+  //       return new FormattedDailyWeather(el);
+  //     })
+  //     response.send(forecastArr);
+  //   }).catch(e => {
+  //     console.error(e);
+  //     response.status(500).send('Status 500')
+  //   })
 }
 
 function searchEvents(request, response) {
@@ -159,6 +178,19 @@ function searchEvents(request, response) {
       response.status(500).send('Status 500');
     })
 }
+
+function getWeather(locationId, response) {
+  console.log(locationId);
+
+  client.query(`SELECT * FROM weather WHERE location_id=$1`, [locationId])
+    .then(sqlResult => {
+      // console.log(sqlResult).rows[0];
+      response.send(sqlResult.rows[0]);
+    })
+
+
+}
+
 
 
 //Starting Server
